@@ -27,7 +27,6 @@ const (
 	Remote                      Mode   = "remote"
 	DefaultConfigFileName       string = "config.json"
 	ConfigDefaultListenPort     int    = 8080
-	ConfigDefaultLogFileName    string = "ImgAPICacher.log"
 	ConfigDefaultCacheFolder    string = "cache"
 	ConfigDefaultCacheTmpFolder string = "tmp"
 	ConfigDefaultUpdateInterval int64  = 3
@@ -518,7 +517,7 @@ func main() {
 	// Initialize logging
 	var logOutput io.Writer
 	if config.LogFileName != "" {
-		logFile, err := os.OpenFile(ConfigDefaultLogFileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		logFile, err := os.OpenFile(config.LogFileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			log.Fatalln("Error:", err)
 		}
