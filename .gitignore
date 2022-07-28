@@ -23,3 +23,4 @@ go.work
 # Project related files
 /cache
 config.json
+ImgAPICacher-Go.log
