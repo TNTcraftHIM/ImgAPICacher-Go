@@ -25,9 +25,9 @@ import (
 const (
 	Local                       Mode   = "local"
 	Remote                      Mode   = "remote"
-	DefaultConfigName           string = "config.json"
-	DefaultLogName              string = "ImgAPICacher-Go.log"
+	DefaultConfigFileName       string = "config.json"
 	ConfigDefaultListenPort     int    = 8080
+	ConfigDefaultLogFileName    string = "ImgAPICacher.log"
 	ConfigDefaultCacheFolder    string = "cache"
 	ConfigDefaultCacheTmpFolder string = "tmp"
 	ConfigDefaultUpdateInterval int64  = 3
@@ -41,6 +41,7 @@ const (
 type Mode string
 type Config struct {
 	ListenPort     int
+	LogFileName    string
 	Mode           Mode
 	CacheFolder    string
 	CacheTmpFolder string
@@ -71,6 +72,11 @@ func newConfig(config Config) Config {
 		newConfig.ListenPort = config.ListenPort
 	} else {
 		log.Println("Warning: ListenPort out of range, using default value " + strconv.Itoa(ConfigDefaultListenPort))
+	}
+	if config.LogFileName != "" {
+		newConfig.LogFileName = config.LogFileName
+	} else {
+		log.Println("Warning: LogName is empty, disabling log file")
 	}
 	if config.Mode == Local || config.Mode == Remote {
 		newConfig.Mode = config.Mode
@@ -115,7 +121,7 @@ func newConfig(config Config) Config {
 // Function for reading config from file
 func readConfig() Config {
 	// Read config file
-	file, err := ioutil.ReadFile(DefaultConfigName)
+	file, err := ioutil.ReadFile(DefaultConfigFileName)
 	if err != nil {
 		log.Fatalln("Error:", err)
 	}
@@ -131,7 +137,7 @@ func readConfig() Config {
 func writeConfig(config Config) {
 	// Write config struct to json file
 	file, _ := json.MarshalIndent(config, "", "\t")
-	err := ioutil.WriteFile(DefaultConfigName, file, 0644)
+	err := ioutil.WriteFile(DefaultConfigFileName, file, 0644)
 	if err != nil {
 		log.Println("Error:", err)
 	}
@@ -141,13 +147,13 @@ func writeConfig(config Config) {
 func getConfig() Config {
 	// Reacd/Write/Create config file
 	var config Config
-	if _, err := os.Stat(DefaultConfigName); err == nil {
+	if _, err := os.Stat(DefaultConfigFileName); err == nil {
 		log.Println("Config file found, reading...")
 		config = newConfig(readConfig())
 	} else if errors.Is(err, os.ErrNotExist) {
 		// No config file, create one
 		log.Println("No config file found, creating one...")
-		writeConfig(newConfig(config))
+		config = newConfig(config)
 	} else {
 		log.Fatalln("Error:", err)
 	}
@@ -316,7 +322,7 @@ func retrieveRemote(hostname string, w http.ResponseWriter, r *http.Request) {
 	log.Println("Retrieving from URL: ", imgURL)
 
 	// Filename for uncompressed image
-	filenameUncompressed := string(config.CacheFolder+string(os.PathSeparator)+config.CacheTmpFolder+string(os.PathSeparator)+strconv.FormatInt(time.Now().UnixMilli(), 10)) + "." + extension
+	filenameUncompressed := string(config.CacheFolder+string(os.PathSeparator)+config.CacheTmpFolder+string(os.PathSeparator)+strconv.FormatInt(time.Now().UnixNano(), 10)) + "." + extension
 	// Check if cache folder and its tmp folder exists
 	if _, err := os.Stat(config.CacheFolder); os.IsNotExist(err) {
 		// Create cache folder
@@ -346,7 +352,7 @@ func retrieveRemote(hostname string, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read and compress image
-	filenameCompressed := string(config.CacheFolder+string(os.PathSeparator)+strconv.FormatInt(time.Now().UnixMilli(), 10)) + ".jpg"
+	filenameCompressed := string(config.CacheFolder+string(os.PathSeparator)+strconv.FormatInt(time.Now().UnixNano(), 10)) + ".jpg"
 	log.Println("Compressing image to: ", filenameCompressed)
 	data, err := ioutil.ReadFile(filenameUncompressed)
 	if err != nil {
@@ -454,7 +460,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		if len(files) == 0 {
 			log.Println("Error:", "No image found in cache folder")
 		} else {
-			rand.Seed(time.Now().UnixMilli())
+			rand.Seed(time.Now().UnixNano())
 			fileIndex := rand.Intn(len(files))
 			// Make sure the file is an image
 			for !isImage(files[fileIndex].Name()) && len(files) > 0 {
@@ -507,17 +513,21 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// Initialize logging
-	logFile, err := os.OpenFile(DefaultLogName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalln("Error:", err)
-	}
-	defer logFile.Close()
-	logOutput := io.MultiWriter(os.Stdout, logFile)
-	log.SetOutput(logOutput)
-
 	// Create/Read config file
 	config = getConfig()
+	// Initialize logging
+	var logOutput io.Writer
+	if config.LogFileName != "" {
+		logFile, err := os.OpenFile(ConfigDefaultLogFileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			log.Fatalln("Error:", err)
+		}
+		defer logFile.Close()
+		logOutput = io.MultiWriter(os.Stdout, logFile)
+	} else {
+		logOutput = os.Stdout
+	}
+	log.SetOutput(logOutput)
 	log.Println("Initialized Config: \n", getConfigString(config))
 
 	// Initialize last update timestamp
