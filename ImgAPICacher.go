@@ -75,7 +75,7 @@ func newConfig(config Config) Config {
 	if config.LogFileName != "" {
 		newConfig.LogFileName = config.LogFileName
 	} else {
-		log.Println("Warning: LogName is empty, disabling log file")
+		log.Println("Warning: LogFileName is empty, disabling log file")
 	}
 	if config.Mode == Local || config.Mode == Remote {
 		newConfig.Mode = config.Mode
