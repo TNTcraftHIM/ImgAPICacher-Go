@@ -24,3 +24,4 @@ go.work
 /cache
 config.json
 ImgAPICacher-Go.log
+ImgAPICacher
