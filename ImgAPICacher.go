@@ -23,8 +23,10 @@ import (
 
 /* Default values */
 const (
-	Local                       Mode   = "local"
-	Remote                      Mode   = "remote"
+	ModeLocal                   Mode   = "local"
+	ModeRemote                  Mode   = "remote"
+	ServeModeLink               Mode   = "link"
+	ServeModeFile               Mode   = "file"
 	DefaultConfigFileName       string = "config.json"
 	ConfigDefaultListenPort     int    = 8080
 	ConfigDefaultCacheFolder    string = "cache"
@@ -42,6 +44,7 @@ type Config struct {
 	ListenPort     int
 	LogFileName    string
 	Mode           Mode
+	ServeMode      Mode
 	CacheFolder    string
 	CacheTmpFolder string
 	UpdateInterval int64
@@ -57,7 +60,8 @@ func newConfig(config Config) Config {
 	// Create new config
 	newConfig := Config{
 		ListenPort:     ConfigDefaultListenPort,
-		Mode:           Remote,
+		Mode:           ModeRemote,
+		ServeMode:      ServeModeLink,
 		CacheFolder:    ConfigDefaultCacheFolder,
 		CacheTmpFolder: ConfigDefaultCacheTmpFolder,
 		UpdateInterval: ConfigDefaultUpdateInterval,
@@ -77,10 +81,15 @@ func newConfig(config Config) Config {
 	} else {
 		log.Println("Warning: LogFileName is empty, disabling log file")
 	}
-	if config.Mode == Local || config.Mode == Remote {
+	if config.Mode == ModeLocal || config.Mode == ModeRemote {
 		newConfig.Mode = config.Mode
 	} else {
-		log.Println("Warning: Mode invalid, using default value " + Remote)
+		log.Println("Warning: Mode invalid, using default value " + ModeRemote)
+	}
+	if config.ServeMode == ServeModeLink || config.ServeMode == ServeModeFile {
+		newConfig.ServeMode = config.ServeMode
+	} else {
+		log.Println("Warning: ServeMode invalid, using default value " + ServeModeLink)
 	}
 	if config.CacheFolder != "" {
 		newConfig.CacheFolder = config.CacheFolder
@@ -384,15 +393,21 @@ func retrieveRemote(hostname string, w http.ResponseWriter, r *http.Request) {
 		} else {
 			if len(files) >= config.MaxCacheSize {
 				// Limit MaxCacheSize reached, change mode to local
-				config.Mode = Local
+				config.Mode = ModeLocal
 				writeConfig(config)
 				log.Println("Limit of MaxCacheSize (", config.MaxCacheSize, ") reached, switching mode to local")
 			}
 		}
 	}
 
-	// Serve image link
-	fmt.Fprintf(w, "http://%s/%s", hostname, strings.Replace(filenameCompressed, "\\", "/", -1))
+	// Serve image link according to ServeMode
+	if config.ServeMode == ServeModeLink {
+		// Serve image link
+		fmt.Fprintf(w, "http://%s/%s", hostname, strings.Replace(filenameCompressed, "\\", "/", -1))
+	} else {
+		// Serve image directly
+		http.ServeFile(w, r, filenameCompressed)
+	}
 	log.Println("--- Finished Remote Retrieval ---")
 }
 
@@ -487,16 +502,22 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 			if len(files) == 0 || !isImage(files[fileIndex].Name()) {
 				log.Println("Error:", "No image found in cache folder")
 			} else {
-				// Serve image
+				// Serve image link according to ServeMode
+				if config.ServeMode == ServeModeLink {
+					// Serve image link
+					fmt.Fprintf(w, "http://%s/%s/%s", hostname, config.CacheFolder, files[fileIndex].Name())
+				} else {
+					// Serve image directly
+					http.ServeFile(w, r, config.CacheFolder+string(os.PathSeparator)+files[fileIndex].Name())
+				}
 				log.Println("Serving local image: ", files[fileIndex].Name())
-				fmt.Fprintf(w, "http://%s/%s/%s", hostname, config.CacheFolder, files[fileIndex].Name())
 				served = true
 			}
 		}
 	}
 
 	// Determine whether to access remote to retrieve more images
-	if served && (config.Mode == Local || time.Now().Unix()-timestamp < config.UpdateInterval) {
+	if served && (config.Mode == ModeLocal || time.Now().Unix()-timestamp < config.UpdateInterval) {
 		return
 	} else {
 		if served {
