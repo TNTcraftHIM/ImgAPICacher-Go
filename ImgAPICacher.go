@@ -25,6 +25,7 @@ import (
 const (
 	ModeLocal                   Mode   = "local"
 	ModeRemote                  Mode   = "remote"
+	ServeModeRedirect           Mode   = "redirect"
 	ServeModeLink               Mode   = "link"
 	ServeModeFile               Mode   = "file"
 	DefaultConfigFileName       string = "config.json"
@@ -61,7 +62,7 @@ func newConfig(config Config) Config {
 	newConfig := Config{
 		ListenPort:     ConfigDefaultListenPort,
 		Mode:           ModeRemote,
-		ServeMode:      ServeModeLink,
+		ServeMode:      ServeModeRedirect,
 		CacheFolder:    ConfigDefaultCacheFolder,
 		CacheTmpFolder: ConfigDefaultCacheTmpFolder,
 		UpdateInterval: ConfigDefaultUpdateInterval,
@@ -86,7 +87,7 @@ func newConfig(config Config) Config {
 	} else {
 		log.Println("Warning: Mode invalid, using default value " + ModeRemote)
 	}
-	if config.ServeMode == ServeModeLink || config.ServeMode == ServeModeFile {
+	if config.ServeMode == ServeModeLink || config.ServeMode == ServeModeRedirect || config.ServeMode == ServeModeFile {
 		newConfig.ServeMode = config.ServeMode
 	} else {
 		log.Println("Warning: ServeMode invalid, using default value " + ServeModeLink)
@@ -404,6 +405,9 @@ func retrieveRemote(hostname string, w http.ResponseWriter, r *http.Request) {
 	if config.ServeMode == ServeModeLink {
 		// Serve image link
 		fmt.Fprintf(w, "http://%s/%s", hostname, strings.Replace(filenameCompressed, "\\", "/", -1))
+	} else if config.ServeMode == ServeModeRedirect {
+		// Serve image via 302 redirect
+		http.Redirect(w, r, "http://"+hostname+"/"+strings.Replace(filenameCompressed, "\\", "/", -1), 302)
 	} else {
 		// Serve image directly
 		http.ServeFile(w, r, filenameCompressed)
@@ -506,6 +510,9 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 				if config.ServeMode == ServeModeLink {
 					// Serve image link
 					fmt.Fprintf(w, "http://%s/%s/%s", hostname, config.CacheFolder, files[fileIndex].Name())
+				} else if config.ServeMode == ServeModeRedirect {
+					// Serve image via 302 redirect
+					http.Redirect(w, r, "http://"+hostname+"/"+config.CacheFolder+"/"+files[fileIndex].Name(), 302)
 				} else {
 					// Serve image directly
 					http.ServeFile(w, r, config.CacheFolder+string(os.PathSeparator)+files[fileIndex].Name())
