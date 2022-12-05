@@ -25,9 +25,10 @@ import (
 const (
 	ModeLocal                   Mode   = "local"
 	ModeRemote                  Mode   = "remote"
+	ServeModeFile               Mode   = "file"
 	ServeModeRedirect           Mode   = "redirect"
 	ServeModeLink               Mode   = "link"
-	ServeModeFile               Mode   = "file"
+	ServeModeHtml               Mode   = "html"
 	DefaultConfigFileName       string = "config.json"
 	ConfigDefaultListenPort     int    = 8080
 	ConfigDefaultCacheFolder    string = "cache"
@@ -35,8 +36,8 @@ const (
 	ConfigDefaultUpdateInterval int64  = 3
 	ConfigDefaultMaxCacheSize   int    = 0 // 0 = unlimited
 	ConfigDefaultImageQuality   int    = 60
-	ConfigDefaultRemote1        string = "https://api.nyan.xyz/httpapi/sexphoto"
-	ConfigDefaultRemote2        string = "https://loliapi.com/acg"
+	ConfigDefaultRemote1        string = "https://api.lolicon.app/setu/v2?r18=2"
+	ConfigDefaultRemote2        string = "https://sex.nyan.xyz/api/v2"
 )
 
 /* Custom types/structs */
@@ -62,7 +63,7 @@ func newConfig(config Config) Config {
 	newConfig := Config{
 		ListenPort:     ConfigDefaultListenPort,
 		Mode:           ModeRemote,
-		ServeMode:      ServeModeRedirect,
+		ServeMode:      ServeModeFile,
 		CacheFolder:    ConfigDefaultCacheFolder,
 		CacheTmpFolder: ConfigDefaultCacheTmpFolder,
 		UpdateInterval: ConfigDefaultUpdateInterval,
@@ -87,7 +88,7 @@ func newConfig(config Config) Config {
 	} else {
 		log.Println("Warning: Mode invalid, using default value " + ModeRemote)
 	}
-	if config.ServeMode == ServeModeLink || config.ServeMode == ServeModeRedirect || config.ServeMode == ServeModeFile {
+	if config.ServeMode == ServeModeLink || config.ServeMode == ServeModeRedirect || config.ServeMode == ServeModeHtml || config.ServeMode == ServeModeFile {
 		newConfig.ServeMode = config.ServeMode
 	} else {
 		log.Println("Warning: ServeMode invalid, using default value " + ServeModeLink)
@@ -202,7 +203,7 @@ func getExtension(contentType string) string {
 func getImgURL(response string) string {
 	// Use regex to extract image URL from http response
 	response = strings.Replace(response, `\/`, "/", -1)
-	pattern := regexp.MustCompile(`https?\:\/\/.+\.(?i)(jpg|jpeg|png)`)
+	pattern := regexp.MustCompile(`https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)(jpg|jpeg|png)`)
 	return pattern.FindString(response)
 }
 
@@ -408,8 +409,10 @@ func retrieveRemote(hostname string, w http.ResponseWriter, r *http.Request) {
 	} else if config.ServeMode == ServeModeRedirect {
 		// Serve image via 302 redirect
 		http.Redirect(w, r, "http://"+hostname+"/"+strings.Replace(filenameCompressed, "\\", "/", -1), 302)
+	} else if config.ServeMode == ServeModeHtml {
+		// Serve image as html page
+		fmt.Fprintf(w, "<html><head><title>ImgAPICacher</title></head><body style=\"margin: 0px; background-color: black; \"><img style=\"display: block; margin-left: auto; margin-right: auto; height: 100%%;\" src=\"http://%s/%s\" /></body></html>", hostname, strings.Replace(filenameCompressed, "\\", "/", -1))
 	} else {
-		// Serve image directly
 		http.ServeFile(w, r, filenameCompressed)
 	}
 	log.Println("--- Finished Remote Retrieval ---")
@@ -513,6 +516,9 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 				} else if config.ServeMode == ServeModeRedirect {
 					// Serve image via 302 redirect
 					http.Redirect(w, r, "http://"+hostname+"/"+config.CacheFolder+"/"+files[fileIndex].Name(), 302)
+				} else if config.ServeMode == ServeModeHtml {
+					// Serve image directly as html page
+					fmt.Fprintf(w, "<html><head><title>ImgAPICacher</title></head><body style=\"margin: 0px; background-color: black; \"><img style=\"display: block; margin-left: auto; margin-right: auto; height: 100%%;\" src=\"http://%s/%s/%s\" /></body></html>", hostname, config.CacheFolder, files[fileIndex].Name())
 				} else {
 					// Serve image directly
 					http.ServeFile(w, r, config.CacheFolder+string(os.PathSeparator)+files[fileIndex].Name())
