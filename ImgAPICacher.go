@@ -288,7 +288,7 @@ func isImage(filename string) bool {
 }
 
 // Function for retrieving image from remotes
-func retrieveRemote(hostname string, w http.ResponseWriter, r *http.Request) {
+func retrieveRemote(hostname string, served bool, w http.ResponseWriter, r *http.Request) {
 	// Start retrieving process
 	log.Println("--- Starting Remote Retrieval ---")
 	// Update last update timestamp
@@ -402,18 +402,22 @@ func retrieveRemote(hostname string, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Serve image link according to ServeMode
-	if config.ServeMode == ServeModeLink {
-		// Serve image link
-		fmt.Fprintf(w, "http://%s/%s", hostname, strings.Replace(filenameCompressed, "\\", "/", -1))
-	} else if config.ServeMode == ServeModeRedirect {
-		// Serve image via 302 redirect
-		http.Redirect(w, r, "http://"+hostname+"/"+strings.Replace(filenameCompressed, "\\", "/", -1), 302)
-	} else if config.ServeMode == ServeModeHtml {
-		// Serve image as html page
-		fmt.Fprintf(w, "<html><head><title>ImgAPICacher</title></head><body style=\"margin: 0px; background-color: black; \"><img style=\"display: block; margin-left: auto; margin-right: auto; height: 100%%;\" src=\"http://%s/%s\" /></body></html>", hostname, strings.Replace(filenameCompressed, "\\", "/", -1))
-	} else {
-		http.ServeFile(w, r, filenameCompressed)
+	// Serve image if not served yet
+	if !served {
+		// Serve image link according to ServeMode
+		if config.ServeMode == ServeModeLink {
+			// Serve image link
+			fmt.Fprintf(w, "http://%s/%s", hostname, strings.Replace(filenameCompressed, "\\", "/", -1))
+		} else if config.ServeMode == ServeModeRedirect {
+			// Serve image via 302 redirect
+			http.Redirect(w, r, "http://"+hostname+"/"+strings.Replace(filenameCompressed, "\\", "/", -1), 302)
+		} else if config.ServeMode == ServeModeHtml {
+			// Serve image as html page
+			fmt.Fprintf(w, "<html><head><title>ImgAPICacher</title></head><body style=\"margin: 0px; background-color: black; \"><img style=\"display: block; margin-left: auto; margin-right: auto; height: 100%%;\" src=\"http://%s/%s\" /></body></html>", hostname, strings.Replace(filenameCompressed, "\\", "/", -1))
+		} else {
+			// Serve image directly
+			http.ServeFile(w, r, filenameCompressed)
+		}
 	}
 	log.Println("--- Finished Remote Retrieval ---")
 }
@@ -507,6 +511,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 			}
 			// If the file is still not an image, log error and retrieve from remote later
 			if len(files) == 0 || !isImage(files[fileIndex].Name()) {
+				// Log error
 				log.Println("Error:", "No image found in cache folder")
 			} else {
 				// Serve image link according to ServeMode
@@ -536,11 +541,11 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		if served {
 			// If we've served an image from local, but it's time to update, update in background
 			go func() {
-				retrieveRemote(hostname, w, r)
+				retrieveRemote(hostname, served, w, r)
 			}()
 		} else {
 			// If we didn't serve image from local, retrieve from remote
-			retrieveRemote(hostname, w, r)
+			retrieveRemote(hostname, served, w, r)
 		}
 	}
 }
